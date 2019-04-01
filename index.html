@@ -1,0 +1,295 @@
+<!doctype html> 
+<html lang="en"> 
+<head> 
+    <meta charset="UTF-8" />
+    <title>Making your first Phaser 3 Game - Part 10</title>
+    <script src="//cdn.jsdelivr.net/npm/phaser@3.11.0/dist/phaser.js"></script>
+    <style type="text/css">
+        body {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+
+<script type="text/javascript">
+
+var config = {
+    type: Phaser.AUTO,
+    width: 800,
+    height: 600,
+    physics: {
+        default: 'arcade',
+        arcade: {
+            gravity: { y: 300 },
+            debug: false
+        }
+    },
+    scene: {
+        preload: preload,
+        create: create,
+        update: update
+    }
+};
+
+var player;
+var stars;
+var bombs;
+var eggs;
+var platforms;
+var cursors;
+var score = 0;
+var gameOver = false;
+var scoreText;
+var levelText;
+var level = 0;
+var invincible = false;
+var eggMode = false;
+var velocidad = 160;
+var contador = 0;
+
+var game = new Phaser.Game(config);
+
+function preload ()
+{
+    this.load.image('sky', 'assets/airadventurelevel4.png');
+    this.load.image('ground', 'assets/platform.png');
+    this.load.image('ground1', 'assets/platformSnow.png');
+    this.load.image('star', 'assets/star2.png');
+    this.load.image('bomb', 'assets/meteorL.png');
+    this.load.image('egg', 'assets/egg_0-512.png');
+    this.load.spritesheet('dude', 'assets/alien-48x64.png', { frameWidth: 48, frameHeight: 64 });
+    this.load.audio('a', 'assets/a.mp3');
+}
+
+function create ()
+{
+    //  A simple background for our game
+    this.add.image(400, 300, 'sky');
+
+    musica = this.sound.add('a');
+    musica.setVolume(0.2);
+    
+    //  The platforms group contains the ground and the ledges we can jump on
+    platforms = this.physics.add.staticGroup();
+
+    //  Here we create the ground.
+    //  Scale it to fit the width of the game (the original sprite is 400x32 in size)
+    platforms.create(400, 568, 'ground').setAlpha(0).setScale(2).refreshBody();
+   
+    //  Now let's create some ledges
+    platforms.create(500, 400, 'ground1').setScale(0.3).refreshBody();
+    platforms.create(50, 300, 'ground1').setScale(0.6).refreshBody();
+    platforms.create(750, 240, 'ground1').setScale(0.6).refreshBody();
+    platforms.create(250, 350, 'ground1').setScale(0.4).refreshBody();
+    platforms.create(200, 150, 'ground1').setScale(0.4).refreshBody();
+
+    // The player and its settings
+    player = this.physics.add.sprite(100, 450, 'dude');
+
+    //  Player physics properties. Give the little guy a slight bounce.
+    player.setBounce(0.2); //rebote
+    player.setCollideWorldBounds(true);
+
+    //  Our player animations, turning, walking left and walking right.
+    this.anims.create({
+        key: 'left',
+        frames: this.anims.generateFrameNumbers('dude', { start: 9, end: 11 }),
+        frameRate: 10,
+        repeat: -1
+    });
+
+    this.anims.create({
+        key: 'turn',
+        frames: [ { key: 'dude', frame: 7 } ],
+        frameRate: 20
+    });
+
+    this.anims.create({
+        key: 'right',
+        frames: this.anims.generateFrameNumbers('dude', { start: 3, end: 5 }),
+        frameRate: 10,
+        repeat: -1
+    });
+
+    //  Input Events
+    cursors = this.input.keyboard.createCursorKeys();
+
+    //  Some stars to collect, 12 in total, evenly spaced 70 pixels apart along the x axis
+    stars = this.physics.add.group({
+        key: 'star',
+        repeat: 11,
+        setXY: { x: 12, y: 0, stepX: 70 }
+    });
+
+    stars.children.iterate(function (child) {
+
+        //  Give each star a slightly different bounce
+        child.setBounceY(Phaser.Math.FloatBetween(0.4, 0.8));
+
+    });
+
+    bombs = this.physics.add.group();
+
+    eggs = this.physics.add.group();
+
+    //  The score
+    scoreText = this.add.text(16, 16, 'score: 0', { fontSize: '32px', fill: '#000' });
+
+    //  The level
+    levelText = this.add.text(616, 16, 'level: ' + level , { fontSize: '32px', fill: '#000' });
+
+
+    //  Collide the player and the stars with the platforms
+    this.physics.add.collider(player, platforms);
+    this.physics.add.collider(stars, platforms);
+    this.physics.add.collider(bombs, platforms);
+    this.physics.add.collider(eggs,platforms);
+
+    //  Checks to see if the player overlaps with any of the stars, if he does call the collectStar function
+    this.physics.add.overlap(player, stars, collectStar, null, this);
+    
+    this.physics.add.collider(player, bombs, hitBomb, null, this);
+
+    this.physics.add.overlap(player, eggs, collectEgg, null, this);
+
+}
+
+function update ()
+{
+    if (gameOver)
+    {
+        return;
+    }
+
+    invincible = false;
+
+    player.setTint();
+ 
+
+    if (eggMode)
+    {
+        invincible = true;
+        velocidad = 400;
+        contador--;
+    }
+
+    if (cursors.down.isDown) {
+        player.setVelocityX(0);
+        player.anims.play('turn');
+        player.setTint(0x086A87);
+        invincible = true;
+    } else if (cursors.left.isDown)
+    {
+        player.setVelocityX(-velocidad);
+
+        player.anims.play('left', true);
+    }
+    else if (cursors.right.isDown)
+    {
+        player.setVelocityX(velocidad);
+
+        player.anims.play('right', true);
+    }
+    else
+    {
+        player.setVelocityX(0);
+
+        player.anims.play('turn');
+    }
+//TODO: reactivar la parte de la línea siguiente desactivada
+    if (cursors.up.isDown && player.body.touching.down) 
+    {
+        player.setVelocityY(-330);
+    }
+
+    if (contador === 0) 
+    {
+        eggMode = false;
+        velocidad = 160;
+        contador = 0;
+        musica.pause();
+    }
+
+}
+
+function collectStar (player, star)
+{
+    star.disableBody(true, true);
+
+    //  Add and update the score
+    score += 10;
+    scoreText.setText('Score: ' + score);
+
+
+//TODO: 
+    if ((Phaser.Math.Between(0, 100) % 11) === 0) //REVISAR
+    {
+        var egg = eggs.create(x, 16, 'egg');
+        egg.setScale(0.1);
+        egg.setBounce(1);
+        egg.setCollideWorldBounds(true);
+        egg.setVelocity(Phaser.Math.Between(-200, 200), 20);
+        egg.allowGravity = false;
+    }
+    
+    if (stars.countActive(true) === 0)
+    {
+        
+        level += 1;
+        levelText.setText('level: ' + level);
+
+        //  A new batch of stars to collect
+        stars.children.iterate(function (child) {
+
+            child.enableBody(true, child.x, 0, true, true);
+
+        });
+
+        var x = (player.x < 400) ? Phaser.Math.Between(400, 800) : Phaser.Math.Between(0, 400);
+
+       
+        var bomb = bombs.create(x, 16, 'bomb');
+        bomb.setScale(0.4);
+        bomb.setBounce(1);
+        bomb.setCollideWorldBounds(true);
+        bomb.setVelocity(Phaser.Math.Between(-200, 200), 20);
+        bomb.allowGravity = false;
+        
+    }
+}
+
+function hitBomb (player, bomb)
+{
+    if (!invincible) {
+        
+        this.physics.pause();
+
+        player.setTint(0x0000ff);
+
+        player.anims.play('turn');
+
+        gameOver = true;
+
+        musica.stop();
+    } 
+    
+}
+
+function collectEgg (player, egg)
+{
+    egg.disableBody(true, true);
+
+    //  Add and update the score
+    score += 100;
+    scoreText.setText('Score: ' + score);
+
+    eggMode = true;
+    contador = 500;
+    musica.play();
+}
+
+</script>
+
+</body>
+</html>
